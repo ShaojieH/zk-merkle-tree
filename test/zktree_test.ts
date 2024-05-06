@@ -1,13 +1,14 @@
 import * as fs from 'fs'
 import * as snarkjs from 'snarkjs'
-import { assert } from "chai";
+import { assert, expect } from "chai";
 import { ethers } from "hardhat";
 import { buildMimcSponge, mimcSpongecontract } from 'circomlibjs'
 import { Verifier, ZKTreeTest } from "../typechain-types";
-import { generateZeros, calculateMerkleRootAndPath, checkMerkleProof, generateCommitment, calculateMerkleRootAndPathFromEvents, getVerifierWASM, convertCallData, calculateMerkleRootAndZKProof } from '../src/zktree'
+import { generateZeros, calculateMerkleRootAndPath, checkMerkleProof, generateCommitment, calculateMerkleRootAndPathFromEvents, getVerifierWASM, convertCallData, calculateMerkleRootAndZKProof, generateSalt } from '../src/zktree'
 
 const SEED = "mimcsponge";
 const TREE_LEVELS = 20;
+const NULLIFIER_USE_COUNT = 3;
 
 describe("ZKTree Smart contract test", () => {
 
@@ -23,7 +24,7 @@ describe("ZKTree Smart contract test", () => {
         const ZKTreeTest = await ethers.getContractFactory("ZKTreeTest");
         const Verifier = await ethers.getContractFactory("Verifier");
         verifier = await Verifier.deploy();
-        zktreetest = await ZKTreeTest.deploy(TREE_LEVELS, mimcsponge.address, verifier.address);
+        zktreetest = await ZKTreeTest.deploy(TREE_LEVELS, mimcsponge.address, verifier.address, NULLIFIER_USE_COUNT);
         mimc = await buildMimcSponge();
     });
 
@@ -36,7 +37,7 @@ describe("ZKTree Smart contract test", () => {
 
         const { proof, publicSignals } = await snarkjs.groth16.fullProve(
             {
-                nullifier: commitment.nullifier, secret: commitment.secret,
+                nullifier: commitment.nullifier, secret: commitment.secret, salt: generateSalt(), 
                 pathElements: rootAndPath.pathElements, pathIndices: rootAndPath.pathIndices
             },
             getVerifierWASM(),
@@ -187,7 +188,42 @@ describe("ZKTree Smart contract test", () => {
         const commitment = await generateCommitment()
         await zktreetest.commit(commitment.commitment)
         const cd = await calculateMerkleRootAndZKProof(zktreetest.address, signers[0], TREE_LEVELS, commitment, "build/Verifier.zkey")
-        await zktreetest.nullify(cd.nullifierHash, cd.root, cd.proof_a, cd.proof_b, cd.proof_c)
+        await zktreetest.nullify(cd.nullifierHash, cd.root, cd.saltedNullifierHash,cd.proof_a, cd.proof_b, cd.proof_c)
+    })
+
+    it("Testing nullifier use count", async () => {
+        const signers = await ethers.getSigners()
+        const commitment = await generateCommitment()
+        await zktreetest.commit(commitment.commitment)
+
+        for(let i = 0; i < NULLIFIER_USE_COUNT; i++){
+            const cd = await calculateMerkleRootAndZKProof(zktreetest.address, signers[0], TREE_LEVELS, commitment, "build/Verifier.zkey")
+            await zktreetest.nullify(cd.nullifierHash, cd.root, cd.saltedNullifierHash,cd.proof_a, cd.proof_b, cd.proof_c)
+        }
+
+        const cd = await calculateMerkleRootAndZKProof(zktreetest.address, signers[0], TREE_LEVELS, commitment, "build/Verifier.zkey")
+        await expect(zktreetest.nullify(cd.nullifierHash, cd.root, cd.saltedNullifierHash,cd.proof_a, cd.proof_b, cd.proof_c)).to.be.reverted;
+    })
+
+    it("Testing incorrect saltedNullifierHash", async () =>{
+        const signers = await ethers.getSigners()
+        const commitment = await generateCommitment()
+        await zktreetest.commit(commitment.commitment)
+
+        const cd = await calculateMerkleRootAndZKProof(zktreetest.address, signers[0], TREE_LEVELS, commitment, "build/Verifier.zkey")
+        await expect(zktreetest.nullify(cd.nullifierHash, cd.root, 123,cd.proof_a, cd.proof_b, cd.proof_c)).to.be.reverted;
+    
+    })
+
+    it("Testing salted nullifier double spend", async () => {
+        const signers = await ethers.getSigners()
+        const commitment = await generateCommitment()
+        await zktreetest.commit(commitment.commitment)
+
+        const cd = await calculateMerkleRootAndZKProof(zktreetest.address, signers[0], TREE_LEVELS, commitment, "build/Verifier.zkey")
+        await zktreetest.nullify(cd.nullifierHash, cd.root, cd.saltedNullifierHash,cd.proof_a, cd.proof_b, cd.proof_c)
+        
+        await expect(zktreetest.nullify(cd.nullifierHash, cd.root, cd.saltedNullifierHash,cd.proof_a, cd.proof_b, cd.proof_c)).to.be.reverted;
     })
 
 })

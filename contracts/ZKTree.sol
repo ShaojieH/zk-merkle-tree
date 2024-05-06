@@ -9,15 +9,17 @@ interface IVerifier {
         uint[2] memory a,
         uint[2][2] memory b,
         uint[2] memory c,
-        uint[2] memory input
+        uint[3] memory input
     ) external pure returns (bool r);
 }
 
 contract ZKTree is MerkleTreeWithHistory {
-    mapping(bytes32 => bool) public nullifiers;
+    mapping(bytes32 => uint256) public nullifierHashes;
+    mapping(bytes32 => bool) public saltedNullifierHashes;
     mapping(bytes32 => bool) public commitments;
 
     IVerifier public immutable verifier;
+    uint256 private immutable i_nullifierUseCount;
 
     event Commit(
         bytes32 indexed commitment,
@@ -28,9 +30,12 @@ contract ZKTree is MerkleTreeWithHistory {
     constructor(
         uint32 _levels,
         IHasher _hasher,
-        IVerifier _verifier
+        IVerifier _verifier,
+        uint256 nullifierUseCount
+
     ) MerkleTreeWithHistory(_levels, _hasher) {
         verifier = _verifier;
+        i_nullifierUseCount = nullifierUseCount;
     }
 
     function _commit(bytes32 _commitment) internal {
@@ -42,24 +47,27 @@ contract ZKTree is MerkleTreeWithHistory {
     }
 
     function _nullify(
-        bytes32 _nullifier,
+        bytes32 _nullifierHash,
         bytes32 _root,
+        bytes32 _saltedNullifierHash,
         uint[2] memory _proof_a,
         uint[2][2] memory _proof_b,
         uint[2] memory _proof_c
     ) internal {
-        require(!nullifiers[_nullifier], "The nullifier has been submitted");
+        require(nullifierHashes[_nullifierHash] < i_nullifierUseCount, "The nullifier has been used too many times");
+        require(!saltedNullifierHashes[_saltedNullifierHash], "The salted nullifier has been used");
         require(isKnownRoot(_root), "Cannot find your merkle root");
         require(
             verifier.verifyProof(
                 _proof_a,
                 _proof_b,
                 _proof_c,
-                [uint256(_nullifier), uint256(_root)]
+                [uint256(_nullifierHash), uint256(_root), uint256(_saltedNullifierHash)]
             ),
             "Invalid proof"
         );
 
-        nullifiers[_nullifier] = true;        
+        nullifierHashes[_nullifierHash] += 1;   
+        saltedNullifierHashes[_saltedNullifierHash] = true; 
     }
 }

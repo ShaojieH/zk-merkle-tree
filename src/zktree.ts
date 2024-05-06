@@ -32,6 +32,10 @@ export async function generateCommitment() {
     }
 }
 
+export function generateSalt(){
+    return BigNumber.from(crypto.randomBytes(31)).toString()
+}
+
 export function generateZeros(mimc: any, levels: number) {
     let zeros = []
     zeros[0] = ZERO_VALUE
@@ -128,7 +132,7 @@ export function convertCallData(calldata) {
             [PromiseOrValue<BigNumberish>, PromiseOrValue<BigNumberish>]
         ];
     const c = [argv[6], argv[7]] as [PromiseOrValue<BigNumberish>, PromiseOrValue<BigNumberish>];
-    const input = [argv[8], argv[9]] as [PromiseOrValue<BigNumberish>, PromiseOrValue<BigNumberish>];
+    const input = [argv[8], argv[9], argv[10]] as PromiseOrValue<BigNumberish>[];
 
     return { a, b, c, input };
 }
@@ -138,7 +142,7 @@ export async function calculateMerkleRootAndZKProof(address: any, provider: any,
     const rootAndPath = await calculateMerkleRootAndPathFromEvents(mimc, address, provider, levels, commitment.commitment);
     const { proof, publicSignals } = await snarkjs.groth16.fullProve(
         {
-            nullifier: commitment.nullifier, secret: commitment.secret,
+            nullifier: commitment.nullifier, secret: commitment.secret, salt: generateSalt(),
             pathElements: rootAndPath.pathElements, pathIndices: rootAndPath.pathIndices
         },
         getVerifierWASM(),
@@ -147,6 +151,7 @@ export async function calculateMerkleRootAndZKProof(address: any, provider: any,
     return {
         nullifierHash: publicSignals[0],
         root: publicSignals[1],
+        saltedNullifierHash: publicSignals[2],
         proof_a: cd.a,
         proof_b: cd.b,
         proof_c: cd.c

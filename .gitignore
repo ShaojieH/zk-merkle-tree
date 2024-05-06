@@ -16,3 +16,7 @@ artifacts
 /build/
 /dist/
 /.parcel-cache/
+
+# ZK Auto generated
+src/Verifier.js
+contracts/Verifier.sol
