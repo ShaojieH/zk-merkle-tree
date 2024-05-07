@@ -1,6 +1,6 @@
 {
   "name": "zk-merkle-tree-multiuse",
-  "version": "1.0.4",
+  "version": "1.0.5",
   "repository": "https://github.com/ShaojieH/zk-merkle-tree.git",
   "author": "Laszlo Fazekas <thebojda@gmail.com>, Shaojie Hou <s.hou2@student.vu.nl>",
   "license": "MIT",
